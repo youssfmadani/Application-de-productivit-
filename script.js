@@ -494,4 +494,540 @@
             closeTaskSettings();
         }
 
-        
+        // Add event listeners for task settings modal
+        document.getElementById('cancel-task-settings').addEventListener('click', closeTaskSettings);
+        document.getElementById('save-task-settings').addEventListener('click', saveTaskSettings);
+        document.getElementById('task-billable').addEventListener('change', function (e) {
+            document.getElementById('rate-input-container').classList.toggle('hidden', !e.target.checked);
+        });
+
+        // Close modal when clicking outside
+        document.getElementById('task-settings-modal').addEventListener('click', function (e) {
+            if (e.target === this) {
+                closeTaskSettings();
+            }
+        });
+
+        function showTimeLog(task) {
+            const modal = document.getElementById('time-log-modal');
+            const entriesContainer = document.getElementById('time-log-entries');
+            entriesContainer.innerHTML = '';
+
+            if (task.timeEntries && task.timeEntries.length > 0) {
+                // Sort entries by date, newest first
+                const sortedEntries = [...task.timeEntries].sort((a, b) =>
+                    new Date(b.start) - new Date(a.start)
+                );
+
+                sortedEntries.forEach((entry, index) => {
+                    const entryDiv = document.createElement('div');
+                    entryDiv.className = 'mb-4 p-4 border rounded dark:border-gray-700';
+
+                    const startDate = new Date(entry.start);
+                    const duration = entry.duration;
+                    const hours = Math.floor(duration / 3600);
+                    const minutes = Math.floor((duration % 3600) / 60);
+
+                    entryDiv.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <div class="font-medium">${startDate.toLocaleDateString()} ${startDate.toLocaleTimeString()}</div>
+                                <div class="text-sm text-gray-600 dark:text-gray-400">Duration: ${hours}h ${minutes}m ${duration % 60}s</div>
+                            </div>
+                            <div class="flex space-x-2">
+                                <button class="text-blue-500 hover:text-blue-700" onclick="editTimeEntry('${task.id}', '${entry.start}', ${duration})">
+                                    Edit
+                                </button>
+                                <button class="text-red-500 hover:text-red-700" onclick="deleteTimeEntry('${task.id}', '${entry.start}', ${duration})">
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    entriesContainer.appendChild(entryDiv);
+                });
+            } else {
+                entriesContainer.innerHTML = '<p class="text-gray-500 dark:text-gray-400">No time entries yet</p>';
+            }
+
+            modal.classList.remove('hidden');
+
+            // Close modal when clicking outside
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.classList.add('hidden');
+                }
+            });
+        }
+
+        function editTimeEntry(taskId, entryStart, entryDuration) {
+            const task = findTaskByIdGlobal(taskId);
+            if (!task || !task.timeEntries) return;
+
+            const entry = task.timeEntries.find(e => e.start === entryStart && e.duration === entryDuration);
+            if (!entry) return;
+            const startDate = new Date(entry.start);
+
+            // Pre-fill the time entry modal with existing values
+            document.getElementById('manual-time-minutes').value = Math.floor(entry.duration / 60);
+            document.getElementById('manual-time-date').value = startDate.toISOString().split('T')[0];
+
+            // Delete the old entry
+            task.timeSpent -= entry.duration;
+            task.timeEntries.splice(entryIndex, 1);
+
+            // Open the time entry modal for editing
+            openTimeEntryModal(task);
+
+            // Hide the time log modal
+            document.getElementById('time-log-modal').classList.add('hidden');
+        }
+
+        function deleteTimeEntry(taskId, entryStart, entryDuration) {
+            if (!confirm('Are you sure you want to delete this time entry?')) return;
+
+            const task = findTaskByIdGlobal(taskId);
+            if (!task || !task.timeEntries) return;
+
+            const entryIndex = task.timeEntries.findIndex(entry =>
+                entry.start === entryStart &&
+                entry.duration === entryDuration
+            );
+
+            if (entryIndex !== -1) {
+                task.timeSpent -= task.timeEntries[entryIndex].duration;
+                task.timeEntries.splice(entryIndex, 1);
+
+                saveData();
+                renderTaskList();
+                renderProjectList();
+                renderDashboard();
+                showTimeLog(task); // Refresh the time log display
+            }
+        }
+
+        // Add close button event listener
+        document.getElementById('close-time-log').addEventListener('click', () => {
+        document.getElementById('time-log-modal').classList.add('hidden');
+        });
+
+        function init() {
+            loadInitialData();
+            renderProjectList();
+            showDashboard();
+            setupEventListeners();
+            setupTimeEntryModal();
+
+            // Load settings
+            const settings = JSON.parse(localStorage.getItem('settings')) || {
+                silenceMode: false,
+                pomodoroDuration: 25,
+                soundType: 'default',
+                soundUrl: 'https://www.soundjay.com/buttons/sounds/beep-07a.mp3'
+            };
+
+            document.getElementById('silence-mode').checked = settings.silenceMode;
+            document.getElementById('pomodoro-duration').value = settings.pomodoroDuration;
+            document.getElementById('sound-select').value = settings.soundType;
+            timerSound.src = settings.soundUrl;
+
+            // Load Pomodoro timer state from localStorage
+            const savedPomodoro = JSON.parse(localStorage.getItem('pomodoroTimerState'));
+            if (savedPomodoro && savedPomodoro.isPomodoroRunning && savedPomodoro.currentPomodoroTaskId) {
+                const task = findTaskByIdGlobal(savedPomodoro.currentPomodoroTaskId);
+                if (task) {
+                    currentPomodoroTask = task;
+                    isPomodoroCountUp = savedPomodoro.isPomodoroCountUp;
+                    pomodoroDuration = savedPomodoro.pomodoroDuration;
+                    pomodoroStartTime = savedPomodoro.pomodoroStartTime;
+                    isPomodoroRunning = true;
+                    document.getElementById('pomodoro-display').classList.remove('hidden');
+                    document.getElementById('current-task-title').textContent = task.title;
+                    updatePomodoroTimer();
+                    pomodoroTimer = setInterval(updatePomodoroTimer, 100);
+
+                    // Setup button handlers
+                    document.getElementById('stop-pomodoro').onclick = stopPomodoro;
+                    document.getElementById('pause-pomodoro').onclick = pausePomodoro;
+                    document.getElementById('resume-pomodoro').onclick = resumePomodoro;
+                    document.getElementById('toggle-count-mode').onclick = toggleCountMode;
+
+                    // Show pause button, hide resume
+                    document.getElementById('pause-pomodoro').classList.remove('hidden');
+                    document.getElementById('resume-pomodoro').classList.add('hidden');
+                } else {
+                    // If the task no longer exists, remove the saved state
+                    removePomodoroState();
+                }
+            }
+
+            // Setup settings modal listeners
+            document.getElementById('settings-btn').addEventListener('click', showSettings);
+            document.getElementById('close-settings').addEventListener('click', hideSettings);
+            document.getElementById('sound-select').addEventListener('change', handleSoundSelection);
+            document.getElementById('test-sound-btn').addEventListener('click', testSound);
+            document.getElementById('close-timer-complete').addEventListener('click', closeTimerComplete);
+            // Setup settings change listeners
+            document.getElementById('silence-mode').addEventListener('change', saveSettings);
+            document.getElementById('pomodoro-duration').addEventListener('change', saveSettings);
+            document.getElementById('sound-select').addEventListener('change', (e) => {
+                handleSoundSelection(e);
+                saveSettings();
+            });
+            isDarkMode = document.documentElement.classList.contains('dark');
+            const icon = document.getElementById('dark-mode-icon');
+            if (isDarkMode) {
+                icon.classList.remove('fa-sun');
+                icon.classList.add('fa-moon');
+            } else {
+                icon.classList.remove('fa-moon');
+                icon.classList.add('fa-sun');
+            }
+        }
+
+        function exportData() {
+            const data = JSON.stringify(projects, null, 2);
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `focus-flow-backup-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function importData(file) {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    if (Array.isArray(importedData)) {
+                        if (confirm('This will replace all existing data. Are you sure?')) {
+                            projects = importedData;
+                            saveData();
+                            renderProjectList();
+                            renderTaskList();
+                            renderDashboard();
+                            alert('Data imported successfully!');
+                        }
+                    } else {
+                        alert('Invalid data format');
+                    }
+                } catch (error) {
+                    alert('Error importing data: ' + error.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function setupEventListeners() {
+            document.getElementById('export-btn').addEventListener('click', exportData);
+            document.getElementById('import-btn').addEventListener('click', () => {
+                document.getElementById('import-file').click();
+            });
+            document.getElementById('import-file').addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    importData(e.target.files[0]);
+                    e.target.value = ''; // Reset file input
+                }
+            });
+            // Removed the 'reset-today-btn' listener from here
+            document.getElementById('new-project-name').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    const projectNameInput = document.getElementById('new-project-name');
+                    const name = projectNameInput.value.trim();
+                    if (name) {
+                        const newProject = {
+                            id: generateId(),
+                            name: name,
+                            tasks: []
+                        };
+                        projects.push(newProject);
+                        saveData();
+                        renderProjectList();
+                        projectNameInput.value = '';
+                    }
+                }
+            });
+            document.getElementById('new-task-title').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    const title = e.target.value.trim();
+                    if (title) {
+                        addTask(null, title);
+                        e.target.value = '';
+                    }
+                }
+            });
+            document.getElementById('dark-mode-toggle').addEventListener('click', toggleDarkMode);
+            document.getElementById('report-btn').addEventListener('click', showReport);
+            document.getElementById('close-report-btn').addEventListener('click', hideReport);
+            document.getElementById('search-input').addEventListener('input', (e) => {
+                searchTerm = e.target.value.toLowerCase();
+                renderTaskList();
+            });
+            document.getElementById('hide-completed-btn').addEventListener('click', () => {
+                hideCompleted = !hideCompleted;
+                document.getElementById('hide-completed-btn').classList.toggle('bg-gray-200');
+                renderTaskList();
+            });
+            document.addEventListener('keydown', handleKeyDown);
+        }
+
+        function setupTimeEntryModal() {
+            document.getElementById('cancel-time-entry').addEventListener('click', () => {
+                closeTimeEntryModal();
+            });
+            document.getElementById('save-time-entry').addEventListener('click', () => {
+                saveTimeEntry();
+            });
+
+            // Close modal when clicking outside the content
+            document.getElementById('time-entry-modal').addEventListener('click', function () {
+                closeTimeEntryModal();
+            });
+
+            // Prevent clicks inside the content from closing the modal
+            document.getElementById('time-entry-modal-content').addEventListener('click', function (e) {
+                e.stopPropagation();
+            });
+        }
+
+        function openTimeEntryModal(task) {
+            currentTimeEntryTask = task;
+            document.getElementById('time-entry-modal').classList.remove('hidden');
+            document.getElementById('manual-time-minutes').value = '';
+            // Set today as default date when opening modal
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('manual-time-date').value = today;
+            document.getElementById('manual-time-minutes').focus();
+        }
+
+        function closeTimeEntryModal() {
+            document.getElementById('time-entry-modal').classList.add('hidden');
+            currentTimeEntryTask = null;
+        }
+
+        function saveTimeEntry() {
+            const minutes = parseInt(document.getElementById('manual-time-minutes').value);
+            const dateStr = document.getElementById('manual-time-date').value;
+
+            if (!minutes || minutes <= 0 || !dateStr) {
+                alert('Please enter valid duration and date');
+                return;
+            }
+
+            const date = new Date(dateStr);
+            date.setHours(12, 0, 0, 0); // Set to noon to avoid timezone issues
+
+            // Create start date from input date at current time
+            const now = new Date();
+            date.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+
+            const timeEntry = {
+                start: date.toISOString(),
+                end: new Date(date.getTime() + minutes * 60000).toISOString(),
+                duration: minutes * 60
+            };
+
+            const task = findTaskByIdGlobal(currentTimeEntryTask.id);
+            if (task) {
+                if (!task.timeEntries) {
+                    task.timeEntries = [];
+                }
+                task.timeEntries.push(timeEntry);
+                task.timeSpent += timeEntry.duration;
+
+                if (task.inToday) {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    let todayTimeSpent = 0;
+                    task.timeEntries.forEach(entry => {
+                        const entryDate = new Date(entry.start);
+                        if (entryDate >= today) {
+                            todayTimeSpent += entry.duration;
+                        }
+                    });
+                    task.dailyProgress = Math.floor(todayTimeSpent / 60 / pomodoroDuration); // Changed from 25 to pomodoroDuration
+                }
+
+                saveData();
+                renderTaskList();
+                renderProjectList();
+                renderDashboard();
+                closeTimeEntryModal();
+            }
+        }
+
+        function handleKeyDown(e) {
+            if (e.ctrlKey || e.metaKey) {
+                switch (e.key) {
+                    case 'n':
+                        e.preventDefault();
+                        document.getElementById('new-task-title').focus();
+                        break;
+                    case 'p':
+                        e.preventDefault();
+                        document.getElementById('new-project-name').focus();
+                        break;
+                    case '/':
+                        e.preventDefault();
+                        document.getElementById('search-input').focus();
+                        break;
+                }
+            }
+        }
+
+
+        function renderProjectList() {
+            const projectList = document.getElementById('project-list');
+            projectList.innerHTML = '';
+            projectDropdowns = []; // Reset global array
+            projects.forEach(project => {
+                const projectDiv = document.createElement('div');
+                projectDiv.className = 'mb-4';
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'flex items-center justify-between mb-1';
+                const btn = document.createElement('button');
+                btn.textContent = project.name;
+                btn.className = `flex-grow text-left p-2 rounded mr-2 ${selectedProject && selectedProject.id === project.id ? "bg-blue-500 text-white" : "bg-gray-100 text-black dark:bg-gray-700 dark:text-gray-200"}`;
+                btn.addEventListener('click', () => selectProject(project.id));
+                const statsDiv = document.createElement('div');
+                statsDiv.className = 'mt-1 px-2';
+                const progressContainer = document.createElement('div');
+                progressContainer.className = 'flex items-center gap-2';
+                const progress = calculateProjectProgress(project.tasks);
+                const totalTime = calculateProjectTotalTime(project.tasks);
+                const progressBar = document.createElement('div');
+                progressBar.className = 'flex-grow h-2 bg-gray-200 rounded dark:bg-gray-600';
+                progressBar.innerHTML = `
+                    <div class="h-full bg-green-500 rounded" style="width: ${progress}%"></div>
+                `;
+                const progressText = document.createElement('span');
+                progressText.className = 'text-sm text-gray-600 dark:text-gray-400';
+                progressText.textContent = `${progress}%`;
+                const timeText = document.createElement('span');
+                timeText.className = 'text-sm text-gray-600 ml-4 dark:text-gray-400';
+                timeText.textContent = `Total: ${(totalTime / 3600).toFixed(1)}h`;
+                progressContainer.appendChild(progressBar);
+                progressContainer.appendChild(progressText);
+                progressContainer.appendChild(timeText);
+                statsDiv.appendChild(progressContainer);
+                const menuDiv = document.createElement('div');
+                menuDiv.className = 'relative';
+                const menuBtn = document.createElement('button');
+                menuBtn.className = 'p-1 hover:bg-gray-100 rounded dark:hover:bg-gray-700';
+                menuBtn.innerHTML = `<i class="fas fa-ellipsis-v text-gray-700 dark:text-gray-200"></i>`;
+                menuBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const dropdown = menuBtn.nextElementSibling;
+                    projectDropdowns.forEach(d => {
+                        if (d !== dropdown) d.classList.add('hidden');
+                    });
+                    dropdown.classList.toggle('hidden');
+                });
+                const dropdownDiv = document.createElement('div');
+                dropdownDiv.className = 'dropdown-content absolute right-0 mt-1 w-32 bg-white border rounded shadow-lg hidden z-10 dark:bg-gray-800 dark:border-gray-700';
+                const editBtn = document.createElement('button');
+                editBtn.innerHTML = 'Edit';
+                editBtn.className = 'w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700';
+                editBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    dropdownDiv.classList.add('hidden');
+                    editProject(project.id);
+                });
+                const deleteBtn = document.createElement('button');
+                deleteBtn.innerHTML = 'Delete';
+                deleteBtn.className = 'w-full text-left px-4 py-2 hover:bg-gray-100 text-red-500 dark:hover:bg-gray-700';
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    dropdownDiv.classList.add('hidden');
+                    deleteProject(project.id);
+                });
+                dropdownDiv.appendChild(editBtn);
+                dropdownDiv.appendChild(deleteBtn);
+                menuDiv.appendChild(menuBtn);
+                menuDiv.appendChild(dropdownDiv);
+                projectDropdowns.push(dropdownDiv);
+                headerDiv.appendChild(btn);
+                headerDiv.appendChild(menuDiv);
+                projectDiv.appendChild(headerDiv);
+                projectDiv.appendChild(statsDiv);
+                projectList.appendChild(projectDiv);
+            });
+        }
+
+        function editProject(projectId) {
+            const project = projects.find(p => p.id === projectId);
+            
+            // Create modal content
+            const modalContent = `
+                <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div class="bg-white p-6 rounded-lg shadow-lg dark:bg-gray-800 dark:text-gray-200 w-[400px]">
+                        <h2 class="text-xl font-bold mb-4">Edit Project</h2>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block mb-2">Project Name</label>
+                                <input type="text" id="edit-project-name" value="${project.name}" 
+                                    class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600">
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <input type="checkbox" id="project-billable" ${project.isBillable ? 'checked' : ''} 
+                                    class="rounded dark:bg-gray-700">
+                                <label>Billable</label>
+                            </div>
+                            <div id="project-rate-container" class="${project.isBillable ? '' : 'hidden'}">
+                                <label class="block mb-2">Default Hourly Rate ($)</label>
+                                <input type="number" id="project-rate" value="${project.hourlyRate || 0}" min="0" step="0.01"
+                                    class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600">
+                            </div>
+                        </div>
+                        <div class="mt-6 flex justify-end space-x-3">
+                            <button id="cancel-project-edit" 
+                                class="px-4 py-2 border rounded hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-700">
+                                Cancel
+                            </button>
+                            <button id="save-project-edit" 
+                                class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                                Save
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Add modal to document
+            const modalContainer = document.createElement('div');
+            modalContainer.innerHTML = modalContent;
+            document.body.appendChild(modalContainer);
+
+            // Setup event listeners
+            document.getElementById('project-billable').addEventListener('change', function(e) {
+                document.getElementById('project-rate-container').classList.toggle('hidden', !e.target.checked);
+            });
+
+            document.getElementById('cancel-project-edit').addEventListener('click', () => {
+                document.body.removeChild(modalContainer);
+            });
+
+            document.getElementById('save-project-edit').addEventListener('click', () => {
+                const newName = document.getElementById('edit-project-name').value.trim();
+                const isBillable = document.getElementById('project-billable').checked;
+                const hourlyRate = parseFloat(document.getElementById('project-rate').value) || 0;
+
+                if (newName) {
+                    project.name = newName;
+                    project.isBillable = isBillable;
+                    project.hourlyRate = hourlyRate;
+                    saveData();
+                    renderProjectList();
+                    if (selectedProject && selectedProject.id === projectId) {
+                        document.getElementById('project-title').textContent = newName;
+                    }
+                }
+                document.body.removeChild(modalContainer);
+            });
+        }
+
+       
