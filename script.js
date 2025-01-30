@@ -1994,4 +1994,494 @@
             reportModal.classList.add('hidden');
         }
 
-       
+        function calculateTotalTime(tasks) {
+            let total = 0;
+            traverseTasks(tasks, task => {
+                total += task.timeSpent;
+            });
+            return total;
+        }
+
+        function countTasks(tasks, isCompleted) {
+            let count = 0;
+            traverseTasks(tasks, task => {
+                if (task.isCompleted === isCompleted) {
+                    count += 1;
+                }
+            });
+            return count;
+        }
+
+        function calculateProjectProgress(tasks) {
+            const totalTasks = countTasks(tasks, true) + countTasks(tasks, false);
+            const completedTasks = countTasks(tasks, true);
+            return totalTasks === 0 ? 0 : Math.round((completedTasks / totalTasks) * 100);
+        }
+
+        function calculateProjectTotalTime(tasks) {
+            return calculateTotalTime(tasks);
+        }
+
+        function calculateTaskTotalTime(task) {
+            let total = task.timeSpent;
+            if (task.subtasks && task.subtasks.length > 0) {
+                total += calculateTotalTime(task.subtasks);
+            }
+            return total;
+        }
+
+        function savePomodoroState() {
+            const state = {
+                currentPomodoroTaskId: currentPomodoroTask ? currentPomodoroTask.id : null,
+                pomodoroStartTime: pomodoroStartTime,
+                isPomodoroCountUp: isPomodoroCountUp,
+                pomodoroDuration: pomodoroDuration,
+                isPomodoroRunning: isPomodoroRunning
+            };
+            localStorage.setItem('pomodoroTimerState', JSON.stringify(state));
+        }
+
+        function removePomodoroState() {
+            localStorage.removeItem('pomodoroTimerState');
+        }
+
+        function formatTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            return `${hours}h ${minutes}m ${secs}s`;
+        }
+
+        function findTaskById(tasks, taskId) {
+            for (let task of tasks) {
+                if (task.id === taskId) {
+                    return task;
+                }
+                if (task.subtasks && task.subtasks.length > 0) {
+                    let result = findTaskById(task.subtasks, taskId);
+                    if (result) return result;
+                }
+            }
+            return null;
+        }
+
+        function findTaskByIdGlobal(taskId) {
+            for (let project of projects) {
+                const task = findTaskById(project.tasks, taskId);
+                if (task) return task;
+            }
+            return null;
+        }
+
+        function getTaskPath(taskId) {
+            const path = [];
+            function findPath(tasks, targetId, currentPath = []) {
+                for (let task of tasks) {
+                    if (task.id === targetId) {
+                        return [...currentPath, task.title];
+                    }
+                    if (task.subtasks && task.subtasks.length > 0) {
+                        const result = findPath(task.subtasks, targetId, [...currentPath, task.title]);
+                        if (result) return result;
+                    }
+                }
+                return null;
+            }
+            for (let project of projects) {
+                const result = findPath(project.tasks, taskId);
+                if (result) {
+                    path.push(...result);
+                    break;
+                }
+            }
+            return path;
+        }
+
+        function removeTaskById(tasks, taskId) {
+            for (let i = 0; i < tasks.length; i++) {
+                if (tasks[i].id === taskId) {
+                    tasks.splice(i, 1);
+                    return true;
+                }
+                if (tasks[i].subtasks && tasks[i].subtasks.length > 0) {
+                    const found = removeTaskById(tasks[i].subtasks, taskId);
+                    if (found) return true;
+                }
+            }
+            return false;
+        }
+
+        function traverseTasks(tasks, callback) {
+            for (let task of tasks) {
+                callback(task);
+                if (task.subtasks && task.subtasks.length > 0) {
+                    traverseTasks(task.subtasks, callback);
+                }
+            }
+        }
+
+        function showSettings() {
+            document.getElementById('settings-modal').classList.remove('hidden');
+        }
+
+        function hideSettings() {
+            document.getElementById('settings-modal').classList.add('hidden');
+        }
+
+        function saveSettings() {
+            const settings = {
+                silenceMode: document.getElementById('silence-mode').checked,
+                pomodoroDuration: parseInt(document.getElementById('pomodoro-duration').value) || 25,
+                soundType: document.getElementById('sound-select').value,
+                soundUrl: timerSound.src
+            };
+            localStorage.setItem('settings', JSON.stringify(settings));
+        }
+
+        function handleSoundSelection(e) {
+            const customSoundInput = document.getElementById('custom-sound-input');
+            if (e.target.value === 'custom') {
+                customSoundInput.classList.remove('hidden');
+            } else {
+                customSoundInput.classList.add('hidden');
+                timerSound.src = 'https://www.soundjay.com/buttons/sounds/beep-07a.mp3';
+                saveSettings();
+            }
+        }
+
+        function testSound() {
+            timerSound.currentTime = 0;
+            timerSound.play().catch(error => {
+                console.error("Error playing sound:", error);
+            });
+            setTimeout(() => {
+                timerSound.pause();
+                timerSound.currentTime = 0;
+            }, 2000);
+        }
+
+        document.getElementById('custom-sound-file').addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (file) {
+                if (timerSound.dataset.objectUrl) {
+                    URL.revokeObjectURL(timerSound.dataset.objectUrl);
+                }
+                const url = URL.createObjectURL(file);
+                timerSound.src = url;
+                timerSound.dataset.objectUrl = url;
+                saveSettings();
+            }
+        });
+
+        function pomodoroComplete() {
+            stopPomodoro();
+            document.getElementById('timer-complete-modal').classList.remove('hidden');
+
+            const silenceMode = document.getElementById('silence-mode').checked;
+
+            if (silenceMode) {
+                // Show notification
+                if ('Notification' in window) {
+                    if (Notification.permission === 'granted') {
+                        new Notification('Pomodoro Complete!', {
+                            body: 'Your pomodoro session has finished.',
+                        });
+                    } else if (Notification.permission !== 'denied') {
+                        Notification.requestPermission().then(permission => {
+                            if (permission === 'granted') {
+                                new Notification('Pomodoro Complete!', {
+                                    body: 'Your pomodoro session has finished.',
+                                });
+                            }
+                        });
+                    }
+                }
+            } else {
+                // Play sound
+                timerSound.play().catch(error => {
+                    console.error("Error playing sound:", error);
+                });
+            }
+        }
+
+        function closeTimerComplete() {
+            document.getElementById('timer-complete-modal').classList.add('hidden');
+            timerSound.pause();
+            timerSound.currentTime = 0;
+        }
+
+        function startNewSession() {
+            closeTimerComplete();
+            if (lastCompletedTask) {
+                document.getElementById('pomodoro-display').classList.remove('hidden');
+                currentPomodoroTask = null;
+                startPomodoro(lastCompletedTask);
+                lastCompletedTask = null;
+            }
+        }
+
+        document.getElementById('start-new-session').addEventListener('click', startNewSession);
+
+        // Add Gantt chart instance variable
+        let ganttChart = null;
+
+        function initGanttChart() {
+            const ganttTasks = [];
+            
+            function processTask(task, level = 0) {
+                const ganttTask = {
+                    id: task.id,
+                    name: task.title,
+                    start: task.start,
+                    end: task.end,
+                    progress: task.progress,
+                    dependencies: '',
+                    custom_class: task.isCompleted ? 'completed' : ''
+                };
+                ganttTasks.push(ganttTask);
+                
+                task.subtasks.forEach(subtask => processTask(subtask, level + 1));
+            }
+            
+            if (selectedProject) {
+                selectedProject.tasks.forEach(task => processTask(task));
+            }
+
+            const ganttContainer = document.getElementById('gantt');
+            if (!ganttContainer) return;
+            
+            // Clear existing chart if it exists
+            ganttContainer.innerHTML = '';
+            
+            try {
+                if (ganttChart) {
+                    ganttChart.refresh(ganttTasks);
+                } else {
+                    ganttChart = new Gantt("#gantt", ganttTasks, {
+                        view_modes: ['Quarter Day', 'Half Day', 'Day', 'Week', 'Month'],
+                        view_mode: 'Day',
+                        date_format: 'YYYY-MM-DD',
+                        on_click: task => {
+                            const originalTask = findTaskByIdGlobal(task.id);
+                            if (originalTask) {
+                                openTaskSettings(originalTask);
+                            }
+                        },
+                        on_date_change: (task, start, end) => {
+                            const originalTask = findTaskByIdGlobal(task.id);
+                            if (originalTask) {
+                                originalTask.start = start.toISOString().split('T')[0];
+                                originalTask.end = end.toISOString().split('T')[0];
+                                saveData();
+                                renderTaskList();
+                            }
+                        },
+                        on_progress_change: (task, progress) => {
+                            const originalTask = findTaskByIdGlobal(task.id);
+                            if (originalTask) {
+                                originalTask.progress = progress;
+                                if (progress === 100) {
+                                    originalTask.isCompleted = true;
+                                }
+                                saveData();
+                                renderTaskList();
+                            }
+                        },
+                        custom_popup_html: task => {
+                            const originalTask = findTaskByIdGlobal(task.id);
+                            if (!originalTask) return '';
+                            
+                            const startDate = new Date(task.start).toLocaleDateString();
+                            const endDate = new Date(task.end).toLocaleDateString();
+                            const timeSpent = formatTime(originalTask.timeSpent);
+                            
+                            return `
+                                <div class="p-2 bg-white dark:bg-gray-800 rounded shadow-lg border dark:border-gray-700">
+                                    <h3 class="font-bold mb-2 dark:text-gray-200">${task.name}</h3>
+                                    <div class="text-sm dark:text-gray-300">
+                                        <p>Start: ${startDate}</p>
+                                        <p>End: ${endDate}</p>
+                                        <p>Progress: ${task.progress}%</p>
+                                        <p>Time Spent: ${timeSpent}</p>
+                                    </div>
+                                </div>
+                            `;
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error initializing Gantt chart:', error);
+                return;
+            }
+
+            // Add zoom controls
+            document.getElementById('zoom-in-btn').onclick = () => {
+                const modes = ['Quarter Day', 'Half Day', 'Day', 'Week', 'Month'];
+                const currentMode = ganttChart.options.view_mode;
+                const currentIndex = modes.indexOf(currentMode);
+                if (currentIndex > 0) {
+                    ganttChart.change_view_mode(modes[currentIndex - 1]);
+                }
+            };
+
+            document.getElementById('zoom-out-btn').onclick = () => {
+                const modes = ['Quarter Day', 'Half Day', 'Day', 'Week', 'Month'];
+                const currentMode = ganttChart.options.view_mode;
+                const currentIndex = modes.indexOf(currentMode);
+                if (currentIndex < modes.length - 1) {
+                    ganttChart.change_view_mode(modes[currentIndex + 1]);
+                }
+            };
+
+            document.getElementById('today-btn').onclick = () => {
+                ganttChart.scroll_to_today();
+            };
+        }
+
+        // Modify selectProject function to initialize Gantt chart
+        function selectProject(projectId) {
+            selectedProject = projects.find(p => p.id === projectId);
+            document.getElementById('project-title').textContent = selectedProject.name;
+            document.getElementById('dashboard-view').classList.add('hidden');
+            document.getElementById('project-view').classList.remove('hidden');
+            renderProjectList();
+            renderTaskList();
+            initGanttChart(); // Initialize Gantt chart when project is selected
+        }
+
+        // Modify task settings modal to include date inputs
+        function openTaskSettings(task) {
+            currentEditingTask = task;
+            document.getElementById('task-name-input').value = task.title;
+            document.getElementById('task-billable').checked = task.isBillable || false;
+            document.getElementById('task-rate').value = task.hourlyRate || 0;
+            document.getElementById('task-pomodoro-duration').value = task.pomodoroDuration || '';
+            document.getElementById('rate-input-container').classList.toggle('hidden', !task.isBillable);
+            
+            // Add date inputs to the modal
+            const modalContent = document.querySelector('#task-settings-modal .space-y-4');
+            if (!document.getElementById('task-dates-container')) {
+                const datesContainer = document.createElement('div');
+                datesContainer.id = 'task-dates-container';
+                datesContainer.innerHTML = `
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block mb-2">Start Date</label>
+                            <input type="date" id="task-start-date" 
+                                class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200">
+                        </div>
+                        <div>
+                            <label class="block mb-2">End Date</label>
+                            <input type="date" id="task-end-date"
+                                class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200">
+                        </div>
+                    </div>
+                `;
+                modalContent.insertBefore(datesContainer, document.getElementById('rate-input-container'));
+            }
+            
+            document.getElementById('task-start-date').value = task.start;
+            document.getElementById('task-end-date').value = task.end;
+            
+            document.getElementById('task-settings-modal').classList.remove('hidden');
+        }
+
+        // Modify saveTaskSettings to save dates
+        function saveTaskSettings() {
+            if (currentEditingTask) {
+                const newTitle = document.getElementById('task-name-input').value.trim();
+                const isBillable = document.getElementById('task-billable').checked;
+                const hourlyRate = parseFloat(document.getElementById('task-rate').value) || 0;
+                const pomodoroDuration = parseInt(document.getElementById('task-pomodoro-duration').value) || 0;
+                const startDate = document.getElementById('task-start-date').value;
+                const endDate = document.getElementById('task-end-date').value;
+
+                if (newTitle) {
+                    const task = findTaskByIdGlobal(currentEditingTask.id);
+                    if (task) {
+                        task.title = newTitle;
+                        task.isBillable = isBillable;
+                        task.hourlyRate = hourlyRate;
+                        task.pomodoroDuration = pomodoroDuration || null;
+                        task.start = startDate;
+                        task.end = endDate;
+                        saveData();
+                        renderTaskList();
+                        initGanttChart(); // Refresh Gantt chart after saving
+                    }
+                }
+            }
+            closeTaskSettings();
+        }
+
+        // Modify addTask to include start and end dates
+        async function addTask(parentId = null, customTitle = null) {
+            const title = customTitle || document.getElementById('new-task-title').value.trim();
+            if (title && selectedProject) {
+                const startDate = new Date();
+                const endDate = new Date();
+                endDate.setDate(endDate.getDate() + 7); // Default duration: 1 week
+
+                const newTask = {
+                    id: generateId(),
+                    title: title,
+                    timeSpent: 0,
+                    isTimerRunning: false,
+                    isExpanded: false,
+                    isCompleted: false,
+                    subtasks: [],
+                    canHaveSubtasks: true,
+                    inToday: false,
+                    dailyGoal: 0,
+                    dailyProgress: 0,
+                    isBillable: false,
+                    hourlyRate: 0,
+                    start: startDate.toISOString().split('T')[0],
+                    end: endDate.toISOString().split('T')[0],
+                    _progress: 0,
+                    get progress() {
+                        return this._progress;
+                    },
+                    set progress(value) {
+                        this._progress = value;
+                    },
+                };
+
+                // If this is a subtask, inherit from parent task
+                if (parentId) {
+                    const parentTask = findTaskById(selectedProject.tasks, parentId);
+                    if (parentTask && parentTask.isBillable) {
+                        newTask.isBillable = true;
+                        newTask.hourlyRate = parentTask.hourlyRate;
+                    }
+                } 
+                // If this is a top-level task, inherit from project
+                else if (selectedProject.isBillable) {
+                    newTask.isBillable = true;
+                    newTask.hourlyRate = selectedProject.hourlyRate;
+                }
+
+                if (parentId) {
+                    const parentTask = findTaskById(selectedProject.tasks, parentId);
+                    if (parentTask) {
+                        parentTask.subtasks.push(newTask);
+                    }
+                } else {
+                    selectedProject.tasks.push(newTask);
+                }
+                saveData();
+                await new Promise(resolve => {
+                    requestAnimationFrame(() => {
+                        renderTaskList();
+                        renderProjectList();
+                        initGanttChart(); // Refresh Gantt chart after adding task
+                        resolve();
+                    });
+                });
+                if (!customTitle) {
+                    document.getElementById('new-task-title').value = '';
+                }
+            }
+        }
+
+        init();
