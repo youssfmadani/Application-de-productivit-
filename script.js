@@ -1522,4 +1522,476 @@
             }
         }
 
+        function renderTaskList() {
+            const taskList = document.getElementById('task-list');
+            taskList.innerHTML = '';
+            if (selectedProject) {
+                const filteredTasks = filterTasks(selectedProject.tasks, searchTerm);
+                filteredTasks.forEach(task => {
+                    const taskElement = createTaskElement(task);
+                    taskList.appendChild(taskElement);
+                });
+            }
+        }
+
+        function filterTasks(tasks, term) {
+            return tasks.filter(task => {
+                if (hideCompleted && task.isCompleted) {
+                    return false;
+                }
+                const inTitle = task.title.toLowerCase().includes(term);
+                const inSubtasks = filterTasks(task.subtasks, term).length > 0;
+                return inTitle || inSubtasks;
+            });
+        }
+
+        function editTask(taskId, newTitle) {
+            const task = findTaskById(selectedProject.tasks, taskId);
+            if (task) {
+                task.title = newTitle;
+                saveData();
+                setTimeout(() => {
+                    renderTaskList();
+                    renderProjectList();
+                }, 50);
+            }
+        }
+
+        function deleteTask(taskId) {
+            removeTaskById(selectedProject.tasks, taskId);
+            savePomodoroState();
+            saveData();
+            renderTaskList();
+        }
+
+        function createLabelWithLinks(text, className) {
+            const label = document.createElement('label');
+            const urlPattern = /(https?:\/\/[^\s]+)/g;
+            const parts = text.split(urlPattern);
+            parts.forEach(part => {
+                if (part.match(urlPattern)) {
+                    const link = document.createElement('a');
+                    link.href = part;
+                    link.textContent = part;
+                    link.target = '_blank';
+                    link.className = 'text-blue-500 hover:text-blue-600 underline';
+                    label.appendChild(link);
+                } else if (part) {
+                    const textNode = document.createTextNode(part);
+                    label.appendChild(textNode);
+                }
+            });
+            if (className) {
+                label.className = className;
+            }
+            return label;
+        }
+
+        function createTimerButton(task, onClick) {
+            const timerBtn = document.createElement('button');
+            timerBtn.className = 'p-1.5 border rounded-lg hover:bg-gray-100 transition-colors duration-200 dark:border-gray-700 dark:hover:bg-gray-700';
+            timerBtn.innerHTML = task.isTimerRunning ? `
+                <svg class="h-4 w-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <rect x="6" y="6" width="12" height="12" rx="2" ry="2"></rect>
+                </svg>
+            ` : `
+                <svg class="h-4 w-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+            `;
+            timerBtn.addEventListener('click', onClick);
+            return timerBtn;
+        }
+
+        function createTodayButton(task, onClick) {
+            const todayBtn = document.createElement('button');
+            todayBtn.className = 'p-1.5 border rounded-lg hover:bg-gray-100 transition-colors duration-200 dark:border-gray-700 dark:hover:bg-gray-700';
+            todayBtn.innerHTML = task.inToday ? '🌞' : '☀️';
+            todayBtn.classList.toggle('bg-yellow-100', task.inToday);
+            todayBtn.title = task.inToday ? 'Remove from Today\'s Tasks' : 'Add to Today\'s Tasks';
+            todayBtn.addEventListener('click', onClick);
+            return todayBtn;
+        }
+
+        function createTaskElement(task, level = 0) {
+            const container = document.createElement('div');
+            container.style.marginLeft = `${level * 24}px`;
+            const taskDiv = document.createElement('div');
+            taskDiv.id = `task-${task.id}`; // Add ID to the task element
+            taskDiv.className = 'flex items-center justify-between p-3 relative bg-white rounded-lg shadow-sm mb-2 hover:shadow-md transition-shadow duration-200 dark:bg-gray-800';
+            if (level > 0) {
+                const verticalLine = document.createElement('div');
+                verticalLine.className = 'absolute left-[-20px] top-0 bottom-0 border-l-2 border-gray-300 dark:border-gray-600';
+                taskDiv.appendChild(verticalLine);
+                const horizontalLine = document.createElement('div');
+                horizontalLine.className = 'absolute left-[-20px] top-1/2 w-[12px] border-t-2 border-gray-300 dark:border-gray-600';
+                taskDiv.appendChild(horizontalLine);
+            }
+            const leftDiv = document.createElement('div');
+            leftDiv.className = 'flex items-center';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = task.isCompleted;
+            checkbox.className = 'mr-2 w-5 h-5 cursor-pointer';
+            checkbox.addEventListener('change', () => toggleTaskCompletion(task.id));
+            leftDiv.appendChild(checkbox);
+            const expandBtn = document.createElement('button');
+            expandBtn.className = 'mr-1 p-1 text-lg w-6 h-6 hover:bg-gray-100 rounded cursor-pointer flex items-center justify-center dark:hover:bg-gray-700';
+            expandBtn.innerHTML = task.isExpanded ? `
+                    <svg class="h-4 w-4 text-gray-700 dark:text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                ` : `
+                    <svg class="h-4 w-4 text-gray-700 dark:text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+                    </svg>
+                `;
+            expandBtn.addEventListener('click', () => toggleTaskExpand(task.id));
+            leftDiv.appendChild(expandBtn);
+            const labelClass = task.isCompleted ? 'text-gray-500 dark:text-gray-400' : 'dark:text-gray-200';
+            const taskTitle = task.title;
+            const label = createLabelWithLinks(taskTitle, `${labelClass} ${task.isCompleted ? 'line-through' : ''}`);
+            leftDiv.appendChild(label);
+            taskDiv.appendChild(leftDiv);
+            const rightDiv = document.createElement('div');
+            rightDiv.className = 'flex items-center space-x-2';
+            const timeSpan = document.createElement('span');
+            const totalTime = calculateTaskTotalTime(task);
+            timeSpan.textContent = formatTime(totalTime);
+            rightDiv.appendChild(timeSpan);
+            const todayBtn = createTodayButton(task, (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const originalTask = findTaskByIdGlobal(task.id);
+                if (originalTask) {
+                    originalTask.inToday = !originalTask.inToday;
+                    if (originalTask.inToday && originalTask.dailyGoal === 0) {
+                        originalTask.dailyGoal = 1;
+                    }
+                    todayBtn.innerHTML = originalTask.inToday ? '🌞' : '☀️';
+                    todayBtn.classList.toggle('bg-yellow-100', originalTask.inToday);
+                    saveData();
+                    renderTaskList();
+                    renderDashboard();
+                    renderProjectList();
+                }
+            });
+            const weekBtn = document.createElement('button');
+            weekBtn.className = 'p-1.5 border rounded-lg hover:bg-gray-100 transition-colors duration-200 dark:border-gray-700 dark:hover:bg-gray-700';
+            weekBtn.innerHTML = task.inWeek ? '📅' : '📆';
+            weekBtn.classList.toggle('bg-blue-100', task.inWeek);
+            weekBtn.title = task.inWeek ? 'Remove from Weekly Tasks' : 'Add to Weekly Tasks';
+            weekBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const originalTask = findTaskByIdGlobal(task.id);
+                if (originalTask) {
+                    originalTask.inWeek = !originalTask.inWeek;
+                    weekBtn.innerHTML = originalTask.inWeek ? '📅' : '📆';
+                    weekBtn.classList.toggle('bg-blue-100', originalTask.inWeek);
+                    saveData();
+                    renderTaskList();
+                    renderDashboard();
+                    renderProjectList();
+                }
+            });
+            rightDiv.appendChild(todayBtn);
+            rightDiv.appendChild(weekBtn);
+            const editBtn = document.createElement('button');
+            editBtn.className = 'p-1.5 border rounded-lg hover:bg-gray-100 transition-colors duration-200 dark:border-gray-700 dark:hover:bg-gray-700';
+            editBtn.innerHTML = `
+                <svg class="h-4 w-4 text-gray-700 dark:text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+            `;
+            editBtn.addEventListener('click', () => {
+                openTaskSettings(task);
+            });
+            rightDiv.appendChild(editBtn);
+            const timerBtn = createTimerButton(task, () => startPomodoro(task));
+            rightDiv.appendChild(timerBtn);
+
+            const addTimeBtn = document.createElement('button');
+            addTimeBtn.className = 'p-1.5 border rounded-lg hover:bg-gray-100 transition-colors duration-200 dark:border-gray-700 dark:hover:bg-gray-700';
+            addTimeBtn.innerHTML = `
+                <svg class="h-4 w-4 text-gray-700 dark:text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            `;
+            addTimeBtn.addEventListener('click', () => openTimeEntryModal(task));
+            rightDiv.appendChild(addTimeBtn);
+
+            const timeLogBtn = document.createElement('button');
+            timeLogBtn.className = 'p-1.5 border rounded-lg hover:bg-gray-100 transition-colors duration-200 dark:border-gray-700 dark:hover:bg-gray-700';
+            timeLogBtn.innerHTML = `
+                <svg class="h-4 w-4 text-gray-700 dark:text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z M19 21v-2a4 4 0 00-4-4H9a4 4 0 00-4 4v2" />
+                </svg>
+            `;
+            timeLogBtn.addEventListener('click', () => showTimeLog(task));
+            rightDiv.appendChild(timeLogBtn);
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'p-1.5 border rounded-lg text-red-500 hover:bg-red-50 transition-colors duration-200 dark:border-gray-700 dark:hover:bg-gray-700';
+            deleteBtn.innerHTML = `
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M6 18L18 18M9 18L9 9M15 18L15 9M5 7L19 7M10 7L10 4H14L14 7" />
+                </svg>
+            `;
+            deleteBtn.addEventListener('click', () => {
+                if (confirm('Are you sure you want to delete this task?')) {
+                    deleteTask(task.id);
+                }
+            });
+            rightDiv.appendChild(deleteBtn);
+            taskDiv.appendChild(rightDiv);
+            container.appendChild(taskDiv);
+            if (task.isExpanded) {
+                const subtasksDiv = document.createElement('div');
+                if (task.subtasks && task.subtasks.length > 0) {
+                    const filteredSubtasks = filterTasks(task.subtasks, searchTerm);
+                    filteredSubtasks.forEach(subtask => {
+                        const subtaskElement = createTaskElement(subtask, level + 1);
+                        subtasksDiv.appendChild(subtaskElement);
+                    });
+                }
+                container.appendChild(subtasksDiv);
+                const addSubtaskDiv = document.createElement('div');
+                addSubtaskDiv.style.marginLeft = `${(level + 1) * 16}px`;
+                addSubtaskDiv.className = 'mt-2';
+                const subtaskInput = document.createElement('input');
+                subtaskInput.type = 'text';
+                subtaskInput.placeholder = '+ subtask';
+                subtaskInput.className = 'mb-2 p-2 border rounded w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 dark:placeholder-gray-400';
+                subtaskInput.addEventListener('keydown', async (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const title = subtaskInput.value.trim();
+                        if (title) {
+                            const input = e.target;
+                            await addTask(task.id, title);
+                            if (document.activeElement === input && input.value === title) {
+                                input.value = '';
+                            }
+                        }
+                    }
+                });
+                addSubtaskDiv.appendChild(subtaskInput);
+                container.appendChild(addSubtaskDiv);
+            }
+            return container;
+        }
+
+        function toggleTaskCompletion(taskId) {
+            const task = findTaskById(selectedProject.tasks, taskId);
+            if (task) {
+                task.isCompleted = !task.isCompleted;
+                task.progress = task.isCompleted ? 100 : 0;
+                traverseTasks(task.subtasks, (subtask) => {
+                    subtask.isCompleted = task.isCompleted;
+                    subtask.progress = task.isCompleted ? 100 : 0;
+                });
+                saveData();
+                renderTaskList();
+                renderProjectList();
+                initGanttChart(); // Refresh Gantt chart after toggling completion
+            }
+        }
+
+        function toggleTaskExpand(taskId) {
+            const task = findTaskById(selectedProject.tasks, taskId);
+            if (task) {
+                task.isExpanded = !task.isExpanded;
+                saveData();
+                renderTaskList();
+            }
+        }
+
+        function startPomodoro(task) {
+            if (currentPomodoroTask) {
+                stopPomodoro();
+            }
+            currentPomodoroTask = task;
+            task.isTimerRunning = true;
+            isPomodoroRunning = true;
+
+            // Ensure display is visible
+            document.getElementById('pomodoro-display').classList.remove('hidden');
+            const settings = JSON.parse(localStorage.getItem('settings')) || {};
+            pomodoroDuration = task.pomodoroDuration || settings.pomodoroDuration || parseInt(document.getElementById('pomodoro-duration').value) || 25;
+            pomodoroStartTime = Date.now();
+            pomodoroElapsedTime = 0;
+            document.getElementById('current-task-title').textContent = task.title;
+
+            updatePomodoroTimer();
+            pomodoroTimer = setInterval(updatePomodoroTimer, 100);
+
+            // Setup button handlers
+            document.getElementById('stop-pomodoro').onclick = stopPomodoro;
+            document.getElementById('pause-pomodoro').onclick = pausePomodoro;
+            document.getElementById('resume-pomodoro').onclick = resumePomodoro;
+            document.getElementById('toggle-count-mode').onclick = toggleCountMode;
+
+            // Show pause button, hide resume
+            document.getElementById('pause-pomodoro').classList.remove('hidden');
+            document.getElementById('resume-pomodoro').classList.add('hidden');
+
+            saveData();
+            renderTaskList();
+        }
+
+        function stopPomodoro() {
+            if (currentPomodoroTask && pomodoroStartTime) {
+                const endTime = Date.now();
+                const elapsedSeconds = Math.floor((endTime - pomodoroStartTime) / 1000);
+                const startTime = new Date(pomodoroStartTime);
+                const timeEntry = {
+                    start: startTime.toISOString(),
+                    end: new Date(endTime).toISOString(),
+                    duration: elapsedSeconds
+                };
+                const task = findTaskByIdGlobal(currentPomodoroTask.id);
+                if (task) {
+                    task.timeSpent += timeEntry.duration;
+                    task.isTimerRunning = false;
+                    if (!task.timeEntries) {
+                        task.timeEntries = [];
+                    }
+                    task.timeEntries.push(timeEntry);
+                    if (task.inToday) {
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        let todayTimeSpent = 0;
+                        task.timeEntries.forEach(entry => {
+                            const entryDate = new Date(entry.start);
+                            if (entryDate >= today) {
+                                todayTimeSpent += entry.duration;
+                            }
+                        });
+                        task.dailyProgress = Math.floor(todayTimeSpent / 60 / (parseInt(document.getElementById('pomodoro-duration').value) || 25));
+                        saveData();
+                        renderDashboard();
+                    }
+                }
+                lastCompletedTask = currentPomodoroTask; // Store for starting new session
+                currentPomodoroTask = null;
+                pomodoroStartTime = null;
+            }
+            if (pomodoroTimer) {
+                clearInterval(pomodoroTimer);
+                pomodoroTimer = null;
+            }
+            document.getElementById('pomodoro-display').classList.add('hidden');
+            removePomodoroState();
+            saveData();
+            renderTaskList();
+            renderProjectList();
+        }
+
+        function updatePomodoroTimer() {
+            const now = Date.now();
+            if (isPomodoroCountUp) {
+                // Count up mode
+                pomodoroElapsedTime = Math.floor((now - pomodoroStartTime) / 1000);
+                const minutes = Math.floor(pomodoroElapsedTime / 60);
+                const seconds = pomodoroElapsedTime % 60;
+                document.getElementById('pomodoro-timer').textContent =
+                    `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            } else {
+                // Count down mode
+                const endTime = pomodoroStartTime + (pomodoroDuration * 60 * 1000);
+                const timeLeft = Math.max(0, Math.floor((endTime - now) / 1000));
+                const minutes = Math.floor(timeLeft / 60);
+                const seconds = timeLeft % 60;
+                document.getElementById('pomodoro-timer').textContent =
+                    `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+                if (timeLeft <= 0 && isPomodoroRunning) {
+                    pomodoroComplete();
+                }
+            }
+            // Save the current timer state
+            if (isPomodoroRunning) {
+                savePomodoroState();
+            }
+        }
+
+        function pausePomodoro() {
+            if (pomodoroTimer) {
+                clearInterval(pomodoroTimer);
+                isPomodoroRunning = false;
+                pomodoroPausedTime = Date.now();
+                document.getElementById('pause-pomodoro').classList.add('hidden');
+                document.getElementById('resume-pomodoro').classList.remove('hidden');
+                savePomodoroState();
+            }
+        }
+
+        function resumePomodoro() {
+            if (pomodoroPausedTime) {
+                const pauseDuration = Date.now() - pomodoroPausedTime;
+                pomodoroStartTime += pauseDuration;
+                isPomodoroRunning = true;
+                pomodoroTimer = setInterval(updatePomodoroTimer, 100);
+                document.getElementById('pause-pomodoro').classList.remove('hidden');
+                document.getElementById('resume-pomodoro').classList.add('hidden');
+                pomodoroPausedTime = null;
+                savePomodoroState();
+            }
+        }
+
+        function toggleCountMode() {
+            isPomodoroCountUp = !isPomodoroCountUp;
+            pomodoroStartTime = Date.now();
+            pomodoroElapsedTime = 0;
+            // Use valid FontAwesome icons
+            document.getElementById('toggle-count-mode').innerHTML =
+                `<i class="fas fa-${isPomodoroCountUp ? 'hourglass-start' : 'clock'}"></i>`;
+            savePomodoroState();
+        }
+
+        function toggleDarkMode() {
+            isDarkMode = !isDarkMode;
+            document.documentElement.classList.toggle('dark');
+            const icon = document.getElementById('dark-mode-icon');
+            if (isDarkMode) {
+                icon.classList.remove('fa-sun');
+                icon.classList.add('fa-moon');
+            } else {
+                icon.classList.remove('fa-moon');
+                icon.classList.add('fa-sun');
+            }
+            renderWeeklyChart();
+        }
+
+        function showReport() {
+            if (!selectedProject) {
+                alert('Please select a project to view the report.');
+                return;
+            }
+            const reportModal = document.getElementById('report-modal');
+            const reportContent = document.getElementById('report-content');
+            const totalTime = calculateTotalTime(selectedProject.tasks);
+            const completedTasks = countTasks(selectedProject.tasks, true);
+            const ongoingTasks = countTasks(selectedProject.tasks, false);
+            reportContent.innerHTML = `
+                <p>Total time spent on tasks: ${formatTime(totalTime)}</p>
+                <p>Number of completed tasks: ${completedTasks}</p>
+                <p>Number of ongoing tasks: ${ongoingTasks}</p>
+            `;
+            reportModal.classList.remove('hidden');
+        }
+
+        function hideReport() {
+            const reportModal = document.getElementById('report-modal');
+            reportModal.classList.add('hidden');
+        }
+
        
