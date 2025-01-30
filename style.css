@@ -1,0 +1,46 @@
+.dark .gantt .bar-wrapper:hover .bar {
+    fill: #60a5fa !important;
+}
+.dark .gantt .bar {
+    fill: #3b82f6 !important;
+}
+.dark .gantt .bar-label {
+    fill: #e5e7eb !important;
+}
+.dark .gantt .grid-header {
+    fill: #1f2937 !important;
+}
+.dark .gantt .grid-row {
+    fill: #374151 !important;
+}
+.dark .gantt .lower-text, .dark .gantt .upper-text {
+    fill: #e5e7eb !important;
+}
+.dark .gantt .today-highlight {
+    fill: #059669 !important;
+}
+.dark .gantt .handle {
+    fill: #60a5fa !important;
+}
+.dark .gantt .bar-progress {
+    fill: #10b981 !important;
+}
+.gantt-container {
+    height: 400px;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+#gantt {
+    height: 100%;
+}
+.gantt .popup-wrapper {
+    background: white;
+    border-radius: 0.375rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    padding: 0.5rem;
+}
+.dark .gantt .popup-wrapper {
+    background: #1f2937;
+    border: 1px solid #374151;
+    color: #e5e7eb;
+}
