@@ -3,12 +3,299 @@
 <head>
     <meta charset="UTF-8">
     <title >BeFocused</title>
-    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Add Frappe Gantt dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
     <link rel="stylesheet" href="style.css">
 </head>
 
 <body class="bg-gray-100 text-black dark:bg-gray-900 dark:text-white">
-    
+    <div id="app" class="flex h-screen">
+        <div id="sidebar" class="w-64 border-r p-4 bg-white shadow-lg dark:bg-gray-800 dark:border-gray-700">
+            <div class="flex flex-col space-y-4">
+                <h2 id="projects-heading" class="text-xl font-bold text-gray-800 cursor-pointer dark:text-gray-200"
+                    onclick="showDashboard()">
+                    Projects</h2>
+            </div>
+            <div id="project-list" class="mt-4 h-[calc(100vh-10rem)] overflow-y-auto scrollbar-none"
+                style="scrollbar-width: none; -ms-overflow-style: none;">
+                <style>
+                    #project-list::-webkit-scrollbar {
+                        display: none;
+                    }
+                </style>
+            </div>
+            <div class="mt-4">
+                <input id="new-project-name" type="text" placeholder="New project name"
+                    class="mb-2 p-2 border rounded-lg w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 dark:placeholder-gray-400">
+            </div>
+        </div>
+
+        <div id="main-panel" class="flex-1 p-6 bg-gray-50 dark:bg-gray-900 overflow-y-auto">
+            <div class="flex justify-between items-center mb-6">
+                <h1 id="project-title" class="text-2xl font-bold"></h1>
+                <div class="flex items-center space-x-4">
+                    <button id="home-btn" class="p-2 border rounded dark:border-gray-700" title="Home"
+                        onclick="showDashboard()">
+                        <svg class="h-5 w-5 text-gray-700 dark:text-gray-200" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                        </svg>
+                    </button>
+                    <div class="flex items-center gap-2">
+                        <div class="relative">
+                            <input id="search-input" type="text" placeholder="Search tasks"
+                                class="pl-8 p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 dark:placeholder-gray-400">
+                            <svg class="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 transform text-gray-500 dark:text-gray-400"
+                                fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                        </div>
+                        <button id="export-btn" class="p-2 border rounded dark:border-gray-700" title="Export Data">
+                           
+                        </button>
+                        <button id="import-btn" class="p-2 border rounded dark:border-gray-700" title="Import Data">
+                           
+                        </button>
+                        <input type="file" id="import-file" accept=".json" class="hidden">
+                        <button id="hide-completed-btn" class="p-2 border rounded dark:border-gray-700"
+                            title="Toggle completed tasks">
+                            <svg class="h-5 w-5 text-gray-700 dark:text-gray-200" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="dark-mode-toggle" class="p-2 border rounded dark:border-gray-700"
+                            title="Toggle Dark Mode">
+                            <i id="dark-mode-icon" class="fas fa-moon text-gray-700 dark:text-gray-200"></i>
+                        </button>
+                        <button id="report-btn" class="p-2 border rounded dark:border-gray-700" title="Project Report">
+                            <svg class="h-5 w-5 text-gray-700 dark:text-gray-200" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9 17v-6a1 1 0 112 0v6a1 1 0 11-2 0zM13 13v4a1 1 0 102 0v-4a1 1 0 10-2 0zM17 9v8a1 1 0 102 0V9a1 1 0 10-2 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 21h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                            </svg>
+                        </button>
+                        <button id="settings-btn" class="p-2 border rounded dark:border-gray-700" title="Settings">
+                            <svg class="h-5 w-5 text-gray-700 dark:text-gray-200" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div id="dashboard-view">
+            </div>
+            <div id="project-view" class="hidden">
+                <div id="task-list" class="space-y-4 mb-4"></div>
+                <div id="task-input">
+                    <input id="new-task-title" type="text" placeholder="+ task "
+                        class="mb-4 p-3 border rounded-lg w-full shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 dark:placeholder-gray-400">
+                </div>
+            </div>
+            <div id="pomodoro-display"
+                class="fixed bottom-0 left-0 right-0 bg-white border-t p-4 hidden dark:bg-gray-800 dark:border-gray-700">
+                <div class="container mx-auto flex justify-between items-center">
+                    <div class="flex items-center">
+                        <span class="font-bold mr-2">Current Task:</span>
+                        <span id="current-task-title">None</span>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <span id="pomodoro-timer" class="text-2xl font-mono">00:00</span>
+                        <div class="flex space-x-2">
+                            <button id="toggle-count-mode" class="bg-blue-500 text-white px-4 py-2 rounded"
+                                title="Toggle Count Mode">
+                                <i class="fas fa-clock"></i>
+                            </button>
+                            <button id="pause-pomodoro" class="bg-yellow-500 text-white px-4 py-2 rounded hidden">
+                                <i class="fas fa-pause"></i>
+                            </button>
+                            <button id="resume-pomodoro" class="bg-green-500 text-white px-4 py-2 rounded hidden">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            <button id="stop-pomodoro" class="bg-red-500 text-white px-4 py-2 rounded">
+                                <i class="fas fa-stop"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="time-entry-modal"
+        class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden z-40">
+        <div id="time-entry-modal-content"
+            class="bg-white p-6 rounded-lg shadow-lg dark:bg-gray-800 dark:text-gray-200 z-50">
+            <h2 class="text-xl font-bold mb-4">Add Time Entry</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block mb-1">Duration (minutes)</label>
+                    <input type="number" id="manual-time-minutes" min="1"
+                        class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600">
+                </div>
+                <div>
+                    <label class="block mb-1">Date</label>
+                    <input type="date" id="manual-time-date"
+                        class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600">
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end space-x-3">
+                <button id="cancel-time-entry"
+                    class="px-4 py-2 border rounded hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-700">
+                    Cancel
+                </button>
+                <button id="save-time-entry" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                    Save
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <audio id="timer-sound" src="https://www.soundjay.com/buttons/sounds/beep-07a.mp3" preload="auto" loop></audio>
+
+    <div id="task-settings-modal"
+        class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden z-50">
+        <div class="bg-white p-6 rounded-lg shadow-lg dark:bg-gray-800 dark:text-gray-200 w-[600px] max-w-[90vw]">
+            <h2 class="text-xl font-bold mb-4">Task Settings</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block mb-2">Task Name</label>
+                    <input type="text" id="task-name-input"
+                        class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200">
+                </div>
+                <div class="flex items-center space-x-2">
+                    <input type="checkbox" id="task-billable" class="rounded dark:bg-gray-700">
+                    <label>Billable</label>
+                </div>
+                <div id="rate-input-container" class="hidden">
+                    <label class="block mb-2">Hourly Rate ($)</label>
+                    <input type="number" id="task-rate" min="0" step="0.01"
+                        class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200">
+                </div>
+                <div>
+                    <label class="block mb-2">Custom Pomodoro Duration (minutes)</label>
+                    <input type="number" id="task-pomodoro-duration" min="1"
+                        class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200">
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Leave empty to use default duration</p>
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end space-x-3">
+                <button id="cancel-task-settings"
+                    class="px-4 py-2 border rounded hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-700">
+                    Cancel
+                </button>
+                <button id="save-task-settings" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                    Save
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="report-modal" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden">
+        <div class="bg-white p-6 rounded dark:bg-gray-800 dark:text-gray-200">
+            <h2 class="text-xl font-bold mb-4">Project Report</h2>
+            <div id="report-content">
+            </div>
+            <button id="close-report-btn" class="mt-4 bg-blue-500 text-white p-2 rounded">Close</button>
+        </div>
+    </div>
+
+    <div id="settings-modal" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden">
+        <div class="bg-white p-6 rounded-lg shadow-lg dark:bg-gray-800 dark:text-gray-200 w-[600px] max-w-[90vw]">
+            <h2 class="text-xl font-bold mb-4">Settings</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block mb-2">Pomodoro Duration (minutes)</label>
+                    <input type="number" id="pomodoro-duration" min="1" max="60" value="25"
+                        class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200">
+                </div>
+                <div class="mt-4">
+                    <label class="block mb-2">Timer Sound</label>
+                    <select id="sound-select" class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600">
+                        <option value="default">Default Beep</option>
+                        <option value="custom">Custom Sound</option>
+                    </select>
+                </div>
+                <div id="custom-sound-input" class="hidden">
+                    <input type="file" accept="audio/*" id="custom-sound-file"
+                        class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600">
+                </div>
+                <div class="mt-4">
+                    <label class="flex items-center space-x-2">
+                        <input type="checkbox" id="silence-mode" class="rounded dark:bg-gray-700">
+                        <span>Silent Mode (Use notifications instead of sound)</span>
+                    </label>
+                </div>
+                <div class="mt-4">
+                    <button id="test-sound-btn" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                        Test Sound
+                    </button>
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end space-x-3">
+                <button id="close-settings"
+                    class="px-4 py-2 border rounded hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-700">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="timer-complete-modal" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden">
+        <div class="bg-white p-6 rounded-lg shadow-lg dark:bg-gray-800 dark:text-gray-200">
+            <h2 class="text-xl font-bold mb-4">Time's Up!</h2>
+            <p class="mb-4">Your pomodoro session is complete.</p>
+            <div class="flex space-x-3">
+                <button id="start-new-session"
+                    class="flex-1 px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">
+                    Start New Session
+                </button>
+                <button id="close-timer-complete"
+                    class="flex-1 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <div id="time-log-modal" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden z-50">
+        <div class="bg-white p-6 rounded-lg shadow-lg dark:bg-gray-800 dark:text-gray-200 w-[600px] max-w-[90vw]">
+            <h2 class="text-xl font-bold mb-4">Time Log</h2>
+            <div id="time-log-entries" class="max-h-[400px] overflow-y-auto">
+            </div>
+            <div class="mt-6 flex justify-end space-x-3">
+                <button id="close-time-log"
+                    class="px-4 py-2 border rounded hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-700">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
 </body>
 
 </html>
