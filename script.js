@@ -1030,4 +1030,496 @@
             });
         }
 
+        function deleteProject(projectId) {
+            if (confirm('Are you sure you want to delete this project and all its tasks?')) {
+                const index = projects.findIndex(p => p.id === projectId);
+                if (index !== -1) {
+                    projects.splice(index, 1);
+                    saveData();
+                    renderProjectList();
+                    if (selectedProject && selectedProject.id === projectId) {
+                        if (projects.length > 0) {
+                            selectedProject = projects[0];
+                            document.getElementById('project-title').textContent = selectedProject.name;
+                            renderTaskList();
+                        } else {
+                            selectedProject = null;
+                            document.getElementById('project-title').textContent = 'Focus Flow';
+                            document.getElementById('task-list').innerHTML = '';
+                            showDashboard(); // Redirect to dashboard if no projects left
+                        }
+                    }
+                }
+            }
+        }
+
+        function selectProject(projectId) {
+            selectedProject = projects.find(p => p.id === projectId);
+            document.getElementById('project-title').textContent = selectedProject.name;
+            document.getElementById('dashboard-view').classList.add('hidden');
+            document.getElementById('project-view').classList.remove('hidden');
+            renderProjectList();
+            renderTaskList();
+            initGanttChart(); // Initialize Gantt chart when project is selected
+        }
+
+        function showDashboard() {
+            selectedProject = null;
+            document.getElementById('project-title').textContent = 'BeFocused';
+            document.getElementById('project-view').classList.add('hidden');
+            document.getElementById('dashboard-view').classList.remove('hidden');
+            renderDashboard();
+            renderProjectList();
+            renderWeeklyChart();
+            renderWeeklyEarningsChart();
+            renderWeeklyEarningsChart();
+        }
+
+        function getWeekStart() {
+            const today = new Date();
+            const day = today.getDay();
+            const diff = today.getDate() - day + (day === 0 ? -6 : 1); // Adjust for Sunday
+            const monday = new Date(today.setDate(diff));
+            monday.setHours(0, 0, 0, 0);
+            return monday;
+        }
+
+        function calculateTodayEarnings() {
+            let totalEarnings = 0;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            projects.forEach(project => {
+                traverseTasks(project.tasks, task => {
+                    if (task.isBillable && task.hourlyRate > 0 && task.timeEntries) {
+                        task.timeEntries.forEach(entry => {
+                            const entryDate = new Date(entry.start);
+                            if (entryDate >= today) {
+                                // Convert seconds to hours and multiply by rate
+                                totalEarnings += (entry.duration / 3600) * task.hourlyRate;
+                            }
+                        });
+                    }
+                });
+            });
+
+            return totalEarnings;
+        }
+
+        function countCompletedTodayTasks() {
+            let completedTasks = 0;
+            const todayTasks = getTodayTasks();
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            todayTasks.forEach(task => {
+                let todayTimeSpent = 0;
+                if (task.timeEntries) {
+                    task.timeEntries.forEach(entry => {
+                        const entryDate = new Date(entry.start);
+                        if (entryDate >= today) {
+                            todayTimeSpent += entry.duration;
+                        }
+                    });
+                }
+                const dailyProgress = Math.floor(todayTimeSpent / 60 / pomodoroDuration);
+
+                if (task.isCompleted || (task.dailyGoal > 0 && dailyProgress >= task.dailyGoal)) {
+                    completedTasks++;
+                }
+            });
+            return completedTasks;
+        }
+
+        function renderDashboard() {
+            const dashboardView = document.getElementById('dashboard-view');
+            let totalProjects = projects.length;
+            let totalTasks = 0;
+            let totalCompletedTasks = 0;
+            let totalTimeSpent = 0;
+            let todayTimeSpent = 0;
+            let mostActiveProject = { name: '-', time: 0 };
+            let highestProgress = { name: '-', progress: 0 };
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            projects.forEach(project => {
+                const projectTotalTime = calculateProjectTotalTime(project.tasks);
+                const projectProgress = calculateProjectProgress(project.tasks);
+                const completedTasks = countTasks(project.tasks, true);
+                const ongoingTasks = countTasks(project.tasks, false);
+                totalTasks += completedTasks + ongoingTasks;
+                totalCompletedTasks += completedTasks;
+                totalTimeSpent += projectTotalTime;
+                project.tasks.forEach(task => {
+                    const calculateTodayTime = (task) => {
+                        let time = 0;
+                        if (task.timeEntries) {
+                            task.timeEntries.forEach(entry => {
+                                const entryDate = new Date(entry.start);
+                                if (entryDate >= today) {
+                                    time += entry.duration;
+                                }
+                            });
+                        }
+                        task.subtasks.forEach(subtask => {
+                            time += calculateTodayTime(subtask);
+                        });
+                        return time;
+                    };
+                    todayTimeSpent += calculateTodayTime(task);
+                });
+                if (projectTotalTime > mostActiveProject.time) {
+                    mostActiveProject = { name: project.name, time: projectTotalTime };
+                }
+                if (projectProgress > highestProgress.progress) {
+                    highestProgress = { name: project.name, progress: projectProgress };
+                }
+            });
+            const weekData = getWeeklyTimeData();
+            dashboardView.innerHTML = `
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="p-6 bg-white rounded-lg shadow dark:bg-gray-800 dark:text-gray-200">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-xl font-bold">Today's Tasks</h3>
+                            <button id="reset-today-btn" class="p-2 border rounded dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700" title="Reset Today's Tasks">
+                                <svg class="h-5 w-5 text-gray-700 dark:text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div id="today-tasks-container" class="space-y-3" style="max-height: 600px; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none;">
+                            <style>
+                                #today-tasks-container::-webkit-scrollbar {
+                                    display: none;
+                                }
+                            </style>
+                        </div>
+                        <hr class="my-6 border-gray-300 dark:border-gray-600">
+                        <div class="mt-6">
+                            <h3 class="font-bold mb-2 text-lg">Today's Activity</h3>
+                            <div class="grid grid-cols-2 gap-4 mb-4">
+                                <div class="p-4 bg-gradient-to-r from-green-500 to-green-600 rounded-lg shadow-lg">
+                                    <div class="text-white text-sm mb-1">Today's Total Time</div>
+                                    <div class="text-white text-2xl font-bold">${formatTime(todayTimeSpent)}</div>
+                                </div>
+                                <div class="p-4 bg-gradient-to-r from-green-500 to-green-600 rounded-lg shadow-lg">
+                                    <div class="text-white text-sm mb-1">Tasks Completed Today</div>
+                                    <div class="text-white text-2xl font-bold">${countCompletedTodayTasks()} / ${getTodayTasks().length}</div>
+                                </div>
+                            </div>
+                           
+                            <div style="height: 400px;" class="mt-4">
+                                <canvas id="weeklyChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-6 bg-white rounded-lg shadow dark:bg-gray-800 dark:text-gray-200">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-xl font-bold">Week's Tasks</h3>
+                            <button id="reset-week-btn" class="p-2 border rounded dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700" title="Reset Week's Tasks">
+                                <svg class="h-5 w-5 text-gray-700 dark:text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div id="week-tasks-container" class="space-y-3" style="max-height: 600px; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none;">
+                            <style>
+                                #week-tasks-container::-webkit-scrollbar {
+                                    display: none;
+                                }
+                            </style>
+                        </div>
+                        <hr class="my-6 border-gray-300 dark:border-gray-600">
+                        <div class="mt-6">
+                            <h3 class="font-bold mb-2 text-lg">Weekly Activity</h3>
+                            <div class="grid grid-cols-2 gap-4 mb-6">
+                                <div class="p-4 bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg shadow-lg">
+                                    <div class="text-white text-sm mb-1">Past 7 Days</div>
+                                    <div id="week-total" class="text-white text-2xl font-bold"></div>
+                                </div>
+                                <div class="p-4 bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg shadow-lg">
+                                    <div class="text-white text-sm mb-1">Past 30 Days</div>
+                                    <div id="month-total" class="text-white text-2xl font-bold"></div>
+                                </div>
+                            </div>
+                            <div style="height: 400px;">
+                                <canvas id="weeklyEarningsChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            // Attach event listener for reset-today-btn here
+            document.getElementById('reset-today-btn').addEventListener('click', resetTodayTasks);
+            document.getElementById('reset-week-btn').addEventListener('click', resetWeekTasks);
+
+            const todayTasksContainer = document.getElementById('today-tasks-container');
+            const weekTasksContainer = document.getElementById('week-tasks-container');
+
+            // Handle week's tasks
+            const weekTasks = getWeekTasks();
+            const sortedWeekTasks = [...weekTasks].sort((a, b) => {
+                if (a.isCompleted === b.isCompleted) return 0;
+                return a.isCompleted ? 1 : -1;
+            });
+
+            weekTasksContainer.innerHTML = '';
+            sortedWeekTasks.forEach(task => {
+                const taskDiv = document.createElement('div');
+                taskDiv.className = 'bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 dark:bg-gray-800 overflow-hidden';
+                const taskHeader = document.createElement('div');
+                taskHeader.className = 'flex items-center justify-between p-3 border-b dark:border-gray-700';
+                const leftDiv = document.createElement('div');
+                leftDiv.className = 'flex items-center space-x-3 flex-grow max-w-[70%]';
+                const statusDiv = document.createElement('div');
+                statusDiv.className = `w-2 h-2 rounded-full ${task.isCompleted ? 'bg-green-500' : 'bg-yellow-500'}`;
+                leftDiv.appendChild(statusDiv);
+                const taskPath = getTaskPath(task.id);
+                const labelContainer = document.createElement('div');
+                labelContainer.className = 'overflow-hidden';
+                const label = createLabelWithLinks(taskPath.join(' > '), `font-medium dark:text-gray-200 break-words ${task.isCompleted ? 'line-through text-gray-500 dark:text-gray-400' : ''}`);
+                const taskLink = document.createElement('a');
+                taskLink.href = '#';
+                taskLink.appendChild(label);
+                taskLink.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    selectProject(task.projectId);
+                    scrollToTask(task.id);
+                });
+                labelContainer.appendChild(taskLink);
+                leftDiv.appendChild(labelContainer);
+                taskHeader.appendChild(leftDiv);
+                const rightDiv = document.createElement('div');
+                rightDiv.className = 'flex items-center space-x-2';
+                const completeBtn = document.createElement('button');
+                completeBtn.className = 'p-1.5 border rounded-lg hover:bg-gray-100 transition-colors duration-200 dark:border-gray-700 dark:hover:bg-gray-700';
+                completeBtn.innerHTML = task.isCompleted ? '✅' : '⬜';
+                completeBtn.title = task.isCompleted ? 'Mark as incomplete' : 'Mark as complete';
+                completeBtn.addEventListener('click', () => {
+                    const originalTask = findTaskByIdGlobal(task.id);
+                    if (originalTask) {
+                        originalTask.isCompleted = !originalTask.isCompleted;
+                        saveData();
+                        renderDashboard();
+                        renderTaskList();
+                    }
+                });
+                rightDiv.appendChild(completeBtn);
+                const todayBtn = createTodayButton(task, () => {
+                    const originalTask = findTaskByIdGlobal(task.id);
+                    if (originalTask) {
+                        originalTask.inToday = !originalTask.inToday;
+                        if (originalTask.inToday && originalTask.dailyGoal === 0) {
+                            originalTask.dailyGoal = 1;
+                        }
+                        saveData();
+                        renderDashboard();
+                        renderTaskList();
+                    }
+                });
+                rightDiv.appendChild(todayBtn);
+                const weekBtn = document.createElement('button');
+                weekBtn.className = 'p-1.5 border rounded-lg hover:bg-gray-100 transition-colors duration-200 dark:border-gray-700 dark:hover:bg-gray-700';
+                weekBtn.innerHTML = '📅';
+                weekBtn.title = 'Remove from Week\'s Tasks';
+                weekBtn.addEventListener('click', () => {
+                    const originalTask = findTaskByIdGlobal(task.id);
+                    if (originalTask) {
+                        originalTask.inWeek = false;
+                        saveData();
+                        renderDashboard();
+                        renderTaskList();
+                    }
+                });
+                rightDiv.appendChild(weekBtn);
+                taskHeader.appendChild(rightDiv);
+                taskDiv.appendChild(taskHeader);
+                weekTasksContainer.appendChild(taskDiv);
+            });
+            const todayTasks = getTodayTasks();
+            // Sort tasks - completed tasks go to the end
+            const sortedTasks = [...todayTasks].sort((a, b) => {
+                if (a.isCompleted === b.isCompleted) return 0;
+                return a.isCompleted ? 1 : -1;
+            });
+            todayTasksContainer.innerHTML = '';
+            sortedTasks.forEach(task => {
+                const taskDiv = document.createElement('div');
+                taskDiv.className = 'bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 dark:bg-gray-800 overflow-hidden';
+                const taskHeader = document.createElement('div');
+                taskHeader.className = 'flex items-center justify-between p-3 border-b dark:border-gray-700';
+                const leftDiv = document.createElement('div');
+                leftDiv.className = 'flex items-center space-x-3 flex-grow max-w-[70%]';
+                const statusDiv = document.createElement('div');
+                statusDiv.className = `w-2 h-2 rounded-full ${task.isCompleted ? 'bg-green-500' : (task.dailyProgress >= task.dailyGoal && task.dailyGoal > 0 ? 'bg-blue-500' : 'bg-yellow-500')}`;
+                leftDiv.appendChild(statusDiv);
+                const taskPath = getTaskPath(task.id);
+                const labelContainer = document.createElement('div');
+                labelContainer.className = 'overflow-hidden';
+                const label = createLabelWithLinks(taskPath.join(' > '), `font-medium dark:text-gray-200 break-words ${task.isCompleted ? 'line-through text-gray-500 dark:text-gray-400' : ''}`);
+                const taskLink = document.createElement('a');
+                taskLink.href = '#';
+                taskLink.appendChild(label);
+                taskLink.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    selectProject(task.projectId);
+                    scrollToTask(task.id);
+                });
+                labelContainer.appendChild(taskLink);
+                leftDiv.appendChild(labelContainer);
+                taskHeader.appendChild(leftDiv);
+                const rightDiv = document.createElement('div');
+                rightDiv.className = 'flex items-center space-x-2';
+                const todayBtn = createTodayButton(task, () => {
+                    const originalTask = findTaskByIdGlobal(task.id);
+                    if (originalTask) {
+                        originalTask.inToday = false;
+                        saveData();
+                        renderDashboard();
+                        renderTaskList();
+                    }
+                });
+                todayBtn.title = 'Remove from Today\'s Tasks';
+                rightDiv.appendChild(todayBtn);
+                const timerBtn = createTimerButton(task, () => {
+                    const currentTask = findTaskByIdGlobal(task.id);
+                    if (currentTask.isTimerRunning) {
+                        stopPomodoro();
+                    } else {
+                        startPomodoro(currentTask);
+                    }
+                });
+                rightDiv.appendChild(timerBtn);
+                taskHeader.appendChild(rightDiv);
+                const goalInput = document.createElement('input');
+                goalInput.type = 'number';
+                goalInput.min = 0;
+                goalInput.value = task.dailyGoal || 0;
+                goalInput.placeholder = 'Daily Goal';
+                goalInput.className = 'w-8 text-center border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 ml-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
+                goalInput.addEventListener('change', () => {
+                    task.dailyGoal = parseInt(goalInput.value) || 0;
+                    saveData();
+                    renderDashboard();
+                });
+                taskHeader.appendChild(goalInput);
+                const progressSection = document.createElement('div');
+                progressSection.className = 'p-3';
+                const progressContainer = document.createElement('div');
+                progressContainer.className = 'flex items-center gap-4';
+                const progressText = document.createElement('div');
+                progressText.className = 'text-sm text-gray-600 dark:text-gray-400 min-w-fit';
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                let todayTimeSpent = 0;
+                if (task.timeEntries) {
+                    task.timeEntries.forEach(entry => {
+                        const entryDate = new Date(entry.start);
+                        if (entryDate >= today) {
+                            todayTimeSpent += entry.duration;
+                        }
+                    });
+                }
+                const pomodorosCompleted = todayTimeSpent / 60 / pomodoroDuration;
+                console.log(pomodoroDuration);
+                const formattedPomodoros = todayTimeSpent > 0 ? pomodorosCompleted.toFixed(1) : Math.floor(pomodorosCompleted);
+                progressText.textContent = `${formattedPomodoros} / ${task.dailyGoal} pomodoros`;
+                const progressBarContainer = document.createElement('div');
+                progressBarContainer.className = 'flex-grow h-2 bg-gray-200 rounded dark:bg-gray-700';
+                const progressPercentage = task.dailyGoal > 0 ? (pomodorosCompleted / task.dailyGoal) * 100 : 0;
+                const progressBar = document.createElement('div');
+                progressBar.className = `h-full rounded transition-all duration-300 ${progressPercentage >= 100 ? 'bg-green-500' : 'bg-blue-500'}`;
+                progressBar.style.width = `${Math.min(progressPercentage, 100)}%`;
+                progressBarContainer.appendChild(progressBar);
+                progressContainer.appendChild(progressText);
+                progressContainer.appendChild(progressBarContainer);
+                progressSection.appendChild(progressContainer);
+                taskDiv.appendChild(taskHeader);
+                taskDiv.appendChild(progressSection);
+                todayTasksContainer.appendChild(taskDiv);
+            });
+        }
+
+        function getTodayTasks() {
+            let todayTasks = [];
+            projects.forEach(project => {
+                project.tasks.forEach(task => {
+                    if (task.inToday) {
+                        task.projectId = project.id; // Assign projectId to the task
+                        todayTasks.push(task);
+                    }
+                    traverseTasks(task.subtasks, (subtask) => {
+                        if (subtask.inToday) {
+                            subtask.projectId = project.id;
+                            todayTasks.push(subtask);
+                        }
+                    });
+                });
+            });
+            return todayTasks;
+        }
+
+        async function addTask(parentId = null, customTitle = null) {
+            const title = customTitle || document.getElementById('new-task-title').value.trim();
+            if (title && selectedProject) {
+                const startDate = new Date();
+                const endDate = new Date();
+                endDate.setDate(endDate.getDate() + 7); // Default duration: 1 week
+
+                const newTask = {
+                    id: generateId(),
+                    title: title,
+                    timeSpent: 0,
+                    isTimerRunning: false,
+                    isExpanded: false,
+                    isCompleted: false,
+                    subtasks: [],
+                    canHaveSubtasks: true,
+                    inToday: false,
+                    dailyGoal: 0,
+                    dailyProgress: 0,
+                    isBillable: false,
+                    hourlyRate: 0,
+                    start: startDate.toISOString().split('T')[0],
+                    end: endDate.toISOString().split('T')[0],
+                    progress: 0
+                };
+
+                // If this is a subtask, inherit from parent task
+                if (parentId) {
+                    const parentTask = findTaskById(selectedProject.tasks, parentId);
+                    if (parentTask && parentTask.isBillable) {
+                        newTask.isBillable = true;
+                        newTask.hourlyRate = parentTask.hourlyRate;
+                    }
+                } 
+                // If this is a top-level task, inherit from project
+                else if (selectedProject.isBillable) {
+                    newTask.isBillable = true;
+                    newTask.hourlyRate = selectedProject.hourlyRate;
+                }
+
+                if (parentId) {
+                    const parentTask = findTaskById(selectedProject.tasks, parentId);
+                    if (parentTask) {
+                        parentTask.subtasks.push(newTask);
+                    }
+                } else {
+                    selectedProject.tasks.push(newTask);
+                }
+                saveData();
+                await new Promise(resolve => {
+                    requestAnimationFrame(() => {
+                        renderTaskList();
+                        renderProjectList();
+                        initGanttChart(); // Refresh Gantt chart after adding task
+                        resolve();
+                    });
+                });
+                if (!customTitle) {
+                    document.getElementById('new-task-title').value = '';
+                }
+            }
+        }
+
        
